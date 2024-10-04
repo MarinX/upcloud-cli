@@ -91,6 +91,9 @@ func BuildRootCmd(conf *config.Config) cobra.Command {
 		&conf.GlobalFlags.ConfigFile, "config", "", "", "Configuration file path.",
 	)
 	flags.StringVarP(
+		&conf.GlobalFlags.ConfigType, "config-type", "", "yaml", "Configuration type (supported: yaml, keyring).",
+	)
+	flags.StringVarP(
 		&conf.GlobalFlags.OutputFormat, "output", "o", "human",
 		"Output format (supported: json, yaml and human)",
 	)

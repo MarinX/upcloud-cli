@@ -10,6 +10,7 @@ import (
 
 	"github.com/UpCloudLtd/upcloud-cli/v3/internal/clierrors"
 	internal "github.com/UpCloudLtd/upcloud-cli/v3/internal/service"
+	"github.com/zalando/go-keyring"
 
 	"github.com/UpCloudLtd/upcloud-go-api/v8/upcloud/client"
 	"github.com/UpCloudLtd/upcloud-go-api/v8/upcloud/service"
@@ -33,6 +34,11 @@ const (
 
 	// env vars custom prefix
 	envPrefix = "UPCLOUD"
+
+	// ConfigTypeYAML is the configuration value for parsing YAML file
+	ConfigTypeYAML = "yaml"
+	// ConfigTypeKeyring is the configuration value for reading from keyring
+	ConfigTypeKeyring = "keyring"
 )
 
 var (
@@ -53,6 +59,7 @@ func New() *Config {
 // GlobalFlags holds information on the flags shared among all commands
 type GlobalFlags struct {
 	ConfigFile    string        `valid:"-"`
+	ConfigType    string        `valid:"-"`
 	ClientTimeout time.Duration `valid:"-"`
 	Debug         bool          `valid:"-"`
 	OutputFormat  string        `valid:"in(human|json|yaml)"`
@@ -77,7 +84,7 @@ func (s *Config) Load() error {
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	v.AutomaticEnv()
 	v.SetConfigName("upctl")
-	v.SetConfigType("yaml")
+	v.SetConfigType(s.GlobalFlags.ConfigType)
 
 	configFile := s.GlobalFlags.ConfigFile
 	if configFile != "" {
@@ -88,14 +95,27 @@ func (s *Config) Load() error {
 		v.AddConfigPath("$HOME/.config") // for MacOS as XDG config is not common
 	}
 
-	// Attempt to read the config file, ignoring only config file not found errors
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return fmt.Errorf("unable to parse config from file '%v': %w", v.ConfigFileUsed(), err)
+	switch s.GlobalFlags.ConfigType {
+	case ConfigTypeYAML:
+		// Attempt to read the config file, ignoring only config file not found errors
+		if err := v.ReadInConfig(); err != nil {
+			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+				return fmt.Errorf("unable to parse config from file '%v': %w", v.ConfigFileUsed(), err)
+			}
 		}
+		v.Set("config", v.ConfigFileUsed())
+	case ConfigTypeKeyring:
+		username, err := keyring.Get(envPrefix, "username")
+		if err != nil {
+			return fmt.Errorf("unable to read username from keyring: %w", err)
+		}
+		password, err := keyring.Get(envPrefix, "password")
+		if err != nil {
+			return fmt.Errorf("unable to read password from keyring: %w", err)
+		}
+		v.Set("username", username)
+		v.Set("password", password)
 	}
-
-	v.Set("config", v.ConfigFileUsed())
 
 	settings := v.AllSettings()
 	// sanitize password before logging settings
